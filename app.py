@@ -1,10 +1,13 @@
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
 
+# =====================================================
+# PAGE CONFIGURATION
+# =====================================================
 st.set_page_config(
     page_title="Global Logistics Intelligence",
     page_icon="✈️",
@@ -12,45 +15,73 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ---------------- DESIGN ----------------
+# =====================================================
+# PROFESSIONAL DASHBOARD DESIGN
+# =====================================================
 st.markdown("""
 <style>
 .stApp {
-    background: #08111f;
+    background: #080f1e;
     color: #f1f5f9;
 }
+[data-testid="stHeader"] {
+    background: #080f1e;
+}
 [data-testid="stSidebar"] {
-    background: #101d30;
-    border-right: 1px solid #263b56;
+    background: #111e32;
+    border-right: 1px solid #29415e;
+}
+[data-testid="stSidebar"] * {
+    color: #f1f5f9 !important;
+}
+.stApp h1, .stApp h2, .stApp h3 {
+    color: #f8fafc !important;
+}
+.stApp p, .stApp label, .stApp li {
+    color: #dbeafe;
 }
 [data-testid="stMetric"] {
-    background: linear-gradient(135deg,#14243b,#1b3150);
-    border: 1px solid #294665;
-    padding: 18px;
-    border-radius: 14px;
+    background: linear-gradient(135deg,#142640,#1d3655);
+    border: 1px solid #355675;
+    padding: 20px;
+    border-radius: 15px;
+    min-height: 115px;
 }
 [data-testid="stMetricLabel"] {
-    color: #9db4d0;
+    color: #cbd5e1 !important;
 }
 [data-testid="stMetricValue"] {
-    color: #60a5fa;
+    color: #38bdf8 !important;
 }
-h1, h2, h3 {
-    color: #eaf3ff;
-}
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 3rem;
+[data-testid="stMetricDelta"] {
+    color: #4ade80 !important;
 }
 div[data-testid="stPlotlyChart"] {
-    background: #101d30;
-    padding: 10px;
+    background: #111e32;
+    border: 1px solid #263e5c;
     border-radius: 14px;
+    padding: 8px;
+}
+div[data-testid="stDataFrame"] {
+    border: 1px solid #29415e;
+    border-radius: 12px;
+}
+.stButton button, .stDownloadButton button {
+    border-radius: 9px;
+}
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+hr {
+    border-color: #29415e;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD DATA ----------------
+# =====================================================
+# LOAD AND CLEAN DATA
+# =====================================================
 @st.cache_data
 def load_data():
     data = pd.read_csv("cargo_data.csv")
@@ -62,12 +93,14 @@ def load_data():
 
     missing = [c for c in required if c not in data.columns]
     if missing:
-        raise ValueError("Missing required columns: " + ", ".join(missing))
+        raise ValueError("Missing columns: " + ", ".join(missing))
 
-    for col in ["cargo_year", "cargo_month", "freight_pounds", "passengers"]:
+    for col in ["cargo_year", "cargo_month",
+                "freight_pounds", "passengers"]:
         data[col] = pd.to_numeric(data[col], errors="coerce")
 
     data = data.dropna(subset=["cargo_year", "cargo_month"])
+
     data["cargo_year"] = data["cargo_year"].astype(int)
     data["cargo_month"] = data["cargo_month"].astype(int)
 
@@ -78,37 +111,36 @@ def load_data():
     data["passengers"] = data["passengers"].fillna(0)
 
     data = data[
-        (data["cargo_month"].between(1, 12)) &
+        data["cargo_month"].between(1, 12) &
         (data["freight_pounds"] >= 0) &
         (data["passengers"] >= 0)
-    ]
+    ].drop_duplicates()
 
-    data = data.drop_duplicates()
     data["route"] = data["origin"] + " → " + data["dest"]
     data["period"] = (
         data["cargo_year"].astype(str) + "-" +
         data["cargo_month"].astype(str).str.zfill(2)
     )
+
     return data
+
 
 try:
     df = load_data()
 except Exception as e:
-    st.error(f"Dataset loading error: {e}")
-    st.info("Check that cargo_data.csv is uploaded in the same GitHub repository as app.py.")
+    st.error(f"Dataset error: {e}")
+    st.info("Make sure cargo_data.csv is present in your GitHub repository.")
     st.stop()
 
-# ---------------- HEADER ----------------
-st.title("✈️ GLOBAL SUPPLY CHAIN & LOGISTICS INTELLIGENCE")
-st.caption("AIR CARGO ANALYTICS  |  FREIGHT MOVEMENT  |  AIRLINE PERFORMANCE  |  ROUTE INTELLIGENCE")
-st.divider()
-
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("✈️ LOGISTICS CONTROL")
-st.sidebar.caption("Interactive Analytics Platform")
+# =====================================================
+# SIDEBAR NAVIGATION
+# =====================================================
+st.sidebar.markdown("# ✈️ LOGISTICS IQ")
+st.sidebar.caption("GLOBAL AIR CARGO ANALYTICS")
+st.sidebar.divider()
 
 page = st.sidebar.radio(
-    "NAVIGATION",
+    "DASHBOARD NAVIGATION",
     [
         "Executive Command Center",
         "Cargo Intelligence",
@@ -121,9 +153,10 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.divider()
-st.sidebar.subheader("DATA FILTERS")
+st.sidebar.markdown("### DATA CONTROLS")
 
 years = sorted(df["cargo_year"].unique().tolist())
+
 selected_years = st.sidebar.multiselect(
     "Select Year",
     years,
@@ -131,186 +164,226 @@ selected_years = st.sidebar.multiselect(
 )
 
 carriers = sorted(df["carrier_name"].unique().tolist())
+
 selected_carriers = st.sidebar.multiselect(
     "Select Airlines",
     carriers,
     default=[]
 )
 
-filtered = df[df["cargo_year"].isin(selected_years)].copy()
+months = sorted(df["cargo_month"].unique().tolist())
+
+selected_months = st.sidebar.multiselect(
+    "Select Months",
+    months,
+    default=months,
+    format_func=lambda x: pd.to_datetime(
+        int(x), format="%m"
+    ).strftime("%B")
+)
+
+filtered = df[
+    df["cargo_year"].isin(selected_years) &
+    df["cargo_month"].isin(selected_months)
+].copy()
 
 if selected_carriers:
-    filtered = filtered[filtered["carrier_name"].isin(selected_carriers)]
+    filtered = filtered[
+        filtered["carrier_name"].isin(selected_carriers)
+    ]
 
 if filtered.empty:
-    st.warning("No records match the selected filters. Change the filters.")
+    st.warning("No records found. Please change your filters.")
     st.stop()
 
-# ---------------- COMMON METRICS ----------------
-total_records = len(filtered)
-total_freight = filtered["freight_pounds"].sum()
-total_passengers = filtered["passengers"].sum()
-total_carriers = filtered["carrier_name"].nunique()
-total_routes = filtered["route"].nunique()
-total_origins = filtered["origin"].nunique()
-total_destinations = filtered["dest"].nunique()
-
-def show_kpis():
-    a, b, c, d = st.columns(4)
-    a.metric("Total Cargo Records", f"{total_records:,}")
-    b.metric("Total Freight", f"{total_freight:,.0f} lbs")
-    c.metric("Total Passengers", f"{total_passengers:,.0f}")
-    d.metric("Active Airlines", f"{total_carriers:,}")
-
-def chart_layout(fig, height=400):
+# =====================================================
+# COMMON FUNCTIONS
+# =====================================================
+def make_chart(fig, height=400):
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor="#101d30",
-        plot_bgcolor="#101d30",
-        font=dict(color="#e5edf8"),
+        paper_bgcolor="#111e32",
+        plot_bgcolor="#111e32",
+        font=dict(color="#e2e8f0"),
         height=height,
-        margin=dict(l=20, r=20, t=65, b=25),
+        margin=dict(l=25, r=25, t=65, b=30),
         legend_title_text=""
     )
     return fig
 
-# ==============================
+
+def show_kpis(data):
+    a, b, c, d = st.columns(4)
+
+    a.metric("Cargo Records", f"{len(data):,}")
+    b.metric("Total Freight", f"{data['freight_pounds'].sum():,.0f} lbs")
+    c.metric("Passengers", f"{data['passengers'].sum():,.0f}")
+    d.metric("Active Airlines", f"{data['carrier_name'].nunique():,}")
+
+
+def top_airlines(data, n=10):
+    return (
+        data.groupby("carrier_name", as_index=False)
+        ["freight_pounds"].sum()
+        .nlargest(n, "freight_pounds")
+    )
+
+
+def top_routes(data, n=10):
+    return (
+        data.groupby("route", as_index=False)
+        ["freight_pounds"].sum()
+        .nlargest(n, "freight_pounds")
+    )
+
+
+# =====================================================
+# GLOBAL HEADER
+# =====================================================
+st.title("✈️ GLOBAL SUPPLY CHAIN & LOGISTICS INTELLIGENCE")
+st.caption(
+    "AIR CARGO ANALYTICS  |  FREIGHT MOVEMENT  |  "
+    "AIRLINE PERFORMANCE  |  ROUTE NETWORK"
+)
+
+st.divider()
+
+# =====================================================
 # 1. EXECUTIVE COMMAND CENTER
-# ==============================
+# =====================================================
 if page == "Executive Command Center":
 
     st.header("📊 Executive Command Center")
-    st.write("A complete overview of air cargo and logistics performance.")
+    st.write("Your complete air cargo business overview.")
 
-    show_kpis()
+    show_kpis(filtered)
 
     a, b, c = st.columns(3)
-    a.metric("Active Routes", f"{total_routes:,}")
-    b.metric("Origin Airports", f"{total_origins:,}")
-    c.metric("Destination Airports", f"{total_destinations:,}")
+    a.metric("Unique Routes", f"{filtered['route'].nunique():,}")
+    b.metric("Origin Airports", f"{filtered['origin'].nunique():,}")
+    c.metric("Destination Airports", f"{filtered['dest'].nunique():,}")
 
     st.divider()
 
     monthly = (
         filtered.groupby("period", as_index=False)
-        .agg(freight=("freight_pounds", "sum"))
+        ["freight_pounds"].sum()
         .sort_values("period")
     )
 
     fig = px.area(
         monthly,
         x="period",
-        y="freight",
+        y="freight_pounds",
         markers=True,
-        title="Overall Freight Movement"
+        title="Total Freight Movement Over Time"
     )
-    st.plotly_chart(chart_layout(fig, 420), use_container_width=True)
+    st.plotly_chart(make_chart(fig, 420), use_container_width=True)
 
     left, right = st.columns(2)
 
-    top_carriers = (
-        filtered.groupby("carrier_name", as_index=False)
-        ["freight_pounds"].sum()
-        .nlargest(10, "freight_pounds")
-    )
+    airlines = top_airlines(filtered, 10)
 
     fig = px.bar(
-        top_carriers,
+        airlines,
         x="freight_pounds",
         y="carrier_name",
         orientation="h",
-        title="Top 10 Airlines"
+        title="Top 10 Airlines by Freight"
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    left.plotly_chart(chart_layout(fig), use_container_width=True)
+    left.plotly_chart(make_chart(fig), use_container_width=True)
 
-    top_routes = (
-        filtered.groupby("route", as_index=False)
-        ["freight_pounds"].sum()
-        .nlargest(10, "freight_pounds")
-    )
+    routes = top_routes(filtered, 10)
 
     fig = px.bar(
-        top_routes,
+        routes,
         x="freight_pounds",
         y="route",
         orientation="h",
         title="Top 10 Cargo Routes"
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    right.plotly_chart(chart_layout(fig), use_container_width=True)
+    right.plotly_chart(make_chart(fig), use_container_width=True)
 
-# ==============================
+    st.subheader("Quick Business Summary")
+
+    best_airline = airlines.iloc[0]["carrier_name"] if not airlines.empty else "N/A"
+    best_route = routes.iloc[0]["route"] if not routes.empty else "N/A"
+
+    st.info(f"Leading airline by freight: {best_airline}")
+    st.info(f"Highest freight route: {best_route}")
+
+# =====================================================
 # 2. CARGO INTELLIGENCE
-# ==============================
+# =====================================================
 elif page == "Cargo Intelligence":
 
     st.header("📦 Cargo Intelligence")
-    st.write("Understand freight volume, passenger movement and cargo distribution.")
+    st.write("Understand freight distribution and passenger movement.")
 
-    show_kpis()
+    show_kpis(filtered)
     st.divider()
+
+    left, right = st.columns(2)
 
     monthly = (
         filtered.groupby(["cargo_year", "cargo_month"], as_index=False)
-        .agg(freight=("freight_pounds", "sum"))
+        ["freight_pounds"].sum()
     )
-
-    monthly["month_name"] = pd.to_datetime(
-        monthly["cargo_month"], format="%m"
-    ).dt.strftime("%b")
 
     fig = px.line(
         monthly,
         x="cargo_month",
-        y="freight",
+        y="freight_pounds",
         color="cargo_year",
         markers=True,
-        title="Monthly Freight Comparison"
+        title="Monthly Freight Comparison by Year"
     )
-    st.plotly_chart(chart_layout(fig), use_container_width=True)
+    left.plotly_chart(make_chart(fig), use_container_width=True)
 
-    left, right = st.columns(2)
-
-    carrier_freight = (
-        filtered.groupby("carrier_name", as_index=False)
-        ["freight_pounds"].sum()
-        .nlargest(10, "freight_pounds")
-    )
+    airline_share = top_airlines(filtered, 10)
 
     fig = px.pie(
-        carrier_freight,
+        airline_share,
         names="carrier_name",
         values="freight_pounds",
         hole=0.5,
-        title="Freight Share by Top Airlines"
+        title="Freight Share - Top 10 Airlines"
     )
-    left.plotly_chart(chart_layout(fig), use_container_width=True)
+    right.plotly_chart(make_chart(fig), use_container_width=True)
+
+    st.subheader("Freight Volume Distribution")
 
     fig = px.histogram(
         filtered,
         x="freight_pounds",
-        nbins=30,
-        title="Freight Volume Distribution"
+        nbins=35,
+        title="Distribution of Freight Records"
     )
-    right.plotly_chart(chart_layout(fig), use_container_width=True)
+    st.plotly_chart(make_chart(fig), use_container_width=True)
 
-    st.subheader("Cargo Data Summary")
-    st.dataframe(
-        filtered[["cargo_year", "cargo_month", "carrier_name",
-                  "freight_pounds", "passengers"]].describe(),
-        use_container_width=True
+    st.subheader("Passenger vs Freight Analysis")
+
+    fig = px.scatter(
+        filtered.sample(min(3000, len(filtered)), random_state=42),
+        x="passengers",
+        y="freight_pounds",
+        color="cargo_year",
+        hover_data=["carrier_name", "origin", "dest"],
+        title="Passenger and Freight Relationship"
     )
+    st.plotly_chart(make_chart(fig), use_container_width=True)
 
-# ==============================
+# =====================================================
 # 3. AIRLINE PERFORMANCE
-# ==============================
+# =====================================================
 elif page == "Airline Performance":
 
     st.header("✈️ Airline Performance")
-    st.write("Compare airline freight and passenger performance.")
+    st.write("Compare airline activity and freight contribution.")
 
-    show_kpis()
+    show_kpis(filtered)
     st.divider()
 
     airline = (
@@ -323,10 +396,8 @@ elif page == "Airline Performance":
         .sort_values("freight", ascending=False)
     )
 
-    top = airline.head(15)
-
     fig = px.bar(
-        top,
+        airline.head(15),
         x="freight",
         y="carrier_name",
         orientation="h",
@@ -334,41 +405,41 @@ elif page == "Airline Performance":
         title="Top 15 Airlines by Freight"
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(chart_layout(fig, 500), use_container_width=True)
+    st.plotly_chart(make_chart(fig, 520), use_container_width=True)
 
     left, right = st.columns(2)
 
     fig = px.pie(
-        top.head(10),
+        airline.head(10),
         names="carrier_name",
         values="passengers",
         hole=0.45,
-        title="Passenger Share - Top 10 Airlines"
+        title="Passenger Share by Airline"
     )
-    left.plotly_chart(chart_layout(fig), use_container_width=True)
+    left.plotly_chart(make_chart(fig), use_container_width=True)
 
     fig = px.scatter(
         airline,
         x="passengers",
         y="freight",
-        hover_name="carrier_name",
         size="records",
-        title="Freight vs Passenger Comparison"
+        hover_name="carrier_name",
+        title="Airline Freight vs Passenger Performance"
     )
-    right.plotly_chart(chart_layout(fig), use_container_width=True)
+    right.plotly_chart(make_chart(fig), use_container_width=True)
 
-    st.subheader("Airline Ranking Table")
+    st.subheader("Airline Performance Ranking")
     st.dataframe(airline, use_container_width=True)
 
-# ==============================
+# =====================================================
 # 4. ROUTE INTELLIGENCE
-# ==============================
+# =====================================================
 elif page == "Route Intelligence":
 
     st.header("🌍 Route Intelligence")
-    st.write("Explore major air cargo routes and airport activity.")
+    st.write("Explore major cargo corridors and airport activity.")
 
-    show_kpis()
+    show_kpis(filtered)
     st.divider()
 
     routes = (
@@ -381,10 +452,8 @@ elif page == "Route Intelligence":
         .sort_values("freight", ascending=False)
     )
 
-    top_routes = routes.head(20)
-
     fig = px.bar(
-        top_routes,
+        routes.head(20),
         x="freight",
         y="route",
         orientation="h",
@@ -392,50 +461,50 @@ elif page == "Route Intelligence":
         title="Top 20 Routes by Freight"
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(chart_layout(fig, 600), use_container_width=True)
+    st.plotly_chart(make_chart(fig, 620), use_container_width=True)
 
     left, right = st.columns(2)
 
-    origin_data = (
+    origin = (
         filtered.groupby("origin", as_index=False)
         ["freight_pounds"].sum()
         .nlargest(10, "freight_pounds")
     )
 
     fig = px.bar(
-        origin_data,
+        origin,
         x="origin",
         y="freight_pounds",
         title="Top 10 Origin Airports"
     )
-    left.plotly_chart(chart_layout(fig), use_container_width=True)
+    left.plotly_chart(make_chart(fig), use_container_width=True)
 
-    dest_data = (
+    destination = (
         filtered.groupby("dest", as_index=False)
         ["freight_pounds"].sum()
         .nlargest(10, "freight_pounds")
     )
 
     fig = px.bar(
-        dest_data,
+        destination,
         x="dest",
         y="freight_pounds",
         title="Top 10 Destination Airports"
     )
-    right.plotly_chart(chart_layout(fig), use_container_width=True)
+    right.plotly_chart(make_chart(fig), use_container_width=True)
 
-    st.subheader("Route Details")
+    st.subheader("Complete Route Network Table")
     st.dataframe(routes, use_container_width=True)
 
-# ==============================
-# 5. TIME & TREND ANALYSIS
-# ==============================
+# =====================================================
+# 5. TIME AND TREND ANALYSIS
+# =====================================================
 elif page == "Time & Trend Analysis":
 
     st.header("📈 Time & Trend Analysis")
-    st.write("Analyze historical freight movement and yearly patterns.")
+    st.write("Discover historical patterns and seasonal freight activity.")
 
-    show_kpis()
+    show_kpis(filtered)
     st.divider()
 
     yearly = (
@@ -456,7 +525,7 @@ elif page == "Time & Trend Analysis":
         markers=True,
         title="Yearly Freight Trend"
     )
-    left.plotly_chart(chart_layout(fig), use_container_width=True)
+    left.plotly_chart(make_chart(fig), use_container_width=True)
 
     fig = px.bar(
         yearly,
@@ -464,40 +533,53 @@ elif page == "Time & Trend Analysis":
         y="passengers",
         title="Yearly Passenger Movement"
     )
-    right.plotly_chart(chart_layout(fig), use_container_width=True)
+    right.plotly_chart(make_chart(fig), use_container_width=True)
 
     monthly = (
-        filtered.groupby("cargo_month", as_index=False)
+        filtered.groupby(["cargo_year", "cargo_month"], as_index=False)
         ["freight_pounds"].sum()
     )
 
-    monthly["month"] = pd.to_datetime(
+    monthly["month_name"] = pd.to_datetime(
         monthly["cargo_month"], format="%m"
-    ).dt.strftime("%B")
+    ).dt.strftime("%b")
 
-    fig = px.bar(
-        monthly,
-        x="month",
-        y="freight_pounds",
-        title="Month-wise Freight Pattern"
+    heat = monthly.pivot(
+        index="cargo_year",
+        columns="month_name",
+        values="freight_pounds"
     )
-    st.plotly_chart(chart_layout(fig), use_container_width=True)
 
-    st.subheader("Year-wise Performance")
+    month_order = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ]
+    heat = heat.reindex(columns=month_order)
+
+    fig = px.imshow(
+        heat,
+        aspect="auto",
+        color_continuous_scale="Blues",
+        title="Seasonality Heatmap: Year vs Month",
+        labels=dict(x="Month", y="Year", color="Freight")
+    )
+    st.plotly_chart(make_chart(fig, 420), use_container_width=True)
+
+    st.subheader("Yearly Performance Table")
     st.dataframe(yearly, use_container_width=True)
 
-# ==============================
+# =====================================================
 # 6. BUSINESS INSIGHTS
-# ==============================
+# =====================================================
 elif page == "Business Insights":
 
-    st.header("💡 Business Intelligence & Insights")
-    st.write("Automatically generated insights from the selected dataset.")
+    st.header("💡 Business Intelligence Center")
+    st.write("Automatic findings calculated from the selected cargo data.")
 
-    show_kpis()
+    show_kpis(filtered)
     st.divider()
 
-    carrier = (
+    airline = (
         filtered.groupby("carrier_name")["freight_pounds"]
         .sum().sort_values(ascending=False)
     )
@@ -517,80 +599,109 @@ elif page == "Business Insights":
         .sum().sort_values(ascending=False)
     )
 
-    month = (
+    monthly = (
         filtered.groupby("cargo_month")["freight_pounds"]
         .sum().sort_values(ascending=False)
     )
-
-    def safe_name(series):
-        return str(series.index[0]) if len(series) else "Not available"
-
-    def safe_value(series):
-        return float(series.iloc[0]) if len(series) else 0
 
     a, b = st.columns(2)
 
     with a:
         st.subheader("🏆 Leading Airline")
-        st.metric("Top Airline", safe_name(carrier))
-        st.metric("Freight Handled", f"{safe_value(carrier):,.0f} lbs")
+        if len(airline):
+            st.metric("Top Airline", str(airline.index[0]))
+            st.metric("Freight Handled", f"{airline.iloc[0]:,.0f} lbs")
 
         st.subheader("🛫 Leading Origin")
-        st.metric("Origin Airport", safe_name(origin))
+        if len(origin):
+            st.metric("Top Origin", str(origin.index[0]))
 
         st.subheader("📍 Leading Destination")
-        st.metric("Destination Airport", safe_name(destination))
+        if len(destination):
+            st.metric("Top Destination", str(destination.index[0]))
 
     with b:
-        st.subheader("🔀 Busiest Cargo Route")
-        st.metric("Top Route", safe_name(route))
-        st.metric("Route Freight", f"{safe_value(route):,.0f} lbs")
+        st.subheader("🔀 Busiest Route")
+        if len(route):
+            st.metric("Top Route", str(route.index[0]))
+            st.metric("Route Freight", f"{route.iloc[0]:,.0f} lbs")
 
         st.subheader("📅 Highest Freight Month")
-        if len(month):
-            st.metric(
-                "Month",
-                pd.to_datetime(int(month.index[0]), format="%m").strftime("%B")
-            )
+        if len(monthly):
+            month_name = pd.to_datetime(
+                int(monthly.index[0]), format="%m"
+            ).strftime("%B")
+            st.metric("Top Month", month_name)
 
-        st.subheader("📊 Average Freight per Record")
+        st.subheader("📊 Average Freight")
         st.metric(
-            "Average Freight",
+            "Per Record",
             f"{filtered['freight_pounds'].mean():,.2f} lbs"
         )
 
     st.divider()
+
+    st.subheader("🚨 Cargo Anomaly Detection")
+
+    # IQR statistical method, not a trained ML model
+    q1 = filtered["freight_pounds"].quantile(0.25)
+    q3 = filtered["freight_pounds"].quantile(0.75)
+    iqr = q3 - q1
+    upper_limit = q3 + (1.5 * iqr)
+    lower_limit = max(0, q1 - (1.5 * iqr))
+
+    anomalies = filtered[
+        (filtered["freight_pounds"] > upper_limit) |
+        (filtered["freight_pounds"] < lower_limit)
+    ]
+
+    x, y = st.columns(2)
+    x.metric("Unusual Records", f"{len(anomalies):,}")
+    y.metric(
+        "Unusual Record Share",
+        f"{len(anomalies) / len(filtered) * 100:.2f}%"
+    )
+
+    st.caption(
+        "Statistical anomaly screening using the Interquartile Range (IQR) method."
+    )
+
+    st.dataframe(
+        anomalies[
+            ["cargo_year", "cargo_month", "carrier_name",
+             "origin", "dest", "freight_pounds"]
+        ].head(100),
+        use_container_width=True
+    )
+
     st.subheader("Business Recommendations")
 
     st.markdown("""
-    - Monitor high-volume routes to improve cargo capacity planning.
-    - Compare airline freight performance to identify operational leaders.
-    - Study monthly freight patterns for better resource allocation.
-    - Monitor airport activity to understand cargo concentration.
-    - Use historical trends to support logistics planning decisions.
+    - Monitor high-volume cargo routes for capacity planning.
+    - Compare airline freight contribution to understand market concentration.
+    - Study seasonal freight patterns for resource planning.
+    - Monitor airport activity to identify important cargo hubs.
+    - Investigate unusual freight records before making operational decisions.
     """)
 
-    st.caption("Insights are calculated from the selected dataset and filters.")
-
-# ==============================
+# =====================================================
 # 7. DATA EXPLORER
-# ==============================
+# =====================================================
 elif page == "Data Explorer":
 
     st.header("🗂️ Data Explorer")
-    st.write("Explore, filter, inspect and download cargo records.")
-
-    st.subheader("Dataset Overview")
+    st.write("Explore, search, inspect and download air cargo records.")
 
     a, b, c, d = st.columns(4)
-    a.metric("Rows", f"{len(filtered):,}")
-    b.metric("Columns", f"{len(filtered.columns):,}")
+
+    a.metric("Total Rows", f"{len(filtered):,}")
+    b.metric("Total Columns", f"{len(filtered.columns):,}")
     c.metric("Airlines", f"{filtered['carrier_name'].nunique():,}")
     d.metric("Routes", f"{filtered['route'].nunique():,}")
 
     st.divider()
 
-    st.subheader("Column Information")
+    st.subheader("Dataset Information")
 
     info = pd.DataFrame({
         "Column": filtered.columns,
@@ -600,51 +711,74 @@ elif page == "Data Explorer":
 
     st.dataframe(info, use_container_width=True)
 
-    st.subheader("Filter Records")
+    st.subheader("Search Cargo Records")
 
-    search = st.text_input("Search airline, origin or destination")
+    search = st.text_input(
+        "Search by airline, origin or destination",
+        placeholder="Enter airline or airport code..."
+    )
 
     explorer = filtered.copy()
 
     if search:
         mask = (
-            explorer["carrier_name"].str.contains(search, case=False, na=False) |
-            explorer["origin"].str.contains(search, case=False, na=False) |
-            explorer["dest"].str.contains(search, case=False, na=False)
+            explorer["carrier_name"].str.contains(
+                search, case=False, na=False
+            ) |
+            explorer["origin"].str.contains(
+                search, case=False, na=False
+            ) |
+            explorer["dest"].str.contains(
+                search, case=False, na=False
+            )
         )
         explorer = explorer[mask]
 
-    st.caption(f"Showing {len(explorer):,} matching records")
+    st.caption(f"{len(explorer):,} matching records")
 
-    st.dataframe(explorer, use_container_width=True, height=450)
+    st.dataframe(
+        explorer,
+        use_container_width=True,
+        height=450
+    )
 
     st.download_button(
-        "⬇️ Download Filtered CSV",
+        "⬇️ Download Filtered Cargo CSV",
         data=explorer.to_csv(index=False).encode("utf-8"),
-        file_name="filtered_air_cargo_data.csv",
+        file_name="filtered_cargo_data.csv",
         mime="text/csv"
     )
 
-    st.subheader("Upload Compatible Air Cargo CSV")
+    st.divider()
+
+    st.subheader("Upload Another Compatible Dataset")
 
     uploaded = st.file_uploader(
-        "Upload another air cargo CSV for preview",
+        "Upload an air cargo CSV",
         type=["csv"]
     )
 
     if uploaded is not None:
         try:
             new_data = pd.read_csv(uploaded)
-            st.success("CSV uploaded successfully!")
+            st.success("File uploaded successfully!")
             st.write("Rows:", len(new_data))
             st.write("Columns:", len(new_data.columns))
             st.dataframe(new_data.head(100), use_container_width=True)
         except Exception as e:
-            st.error(f"Could not read CSV: {e}")
+            st.error(f"File reading error: {e}")
 
-# ---------------- FOOTER ----------------
+# =====================================================
+# FOOTER
+# =====================================================
 st.divider()
-st.caption(
-    "GLOBAL SUPPLY CHAIN & LOGISTICS INTELLIGENCE | "
-    "Powered by Python, Streamlit, Pandas and Plotly"
-)
+
+st.markdown("""
+<center>
+<p style="color:#94a3b8;">
+GLOBAL SUPPLY CHAIN & LOGISTICS INTELLIGENCE<br>
+Data Processing: Apache Spark / PySpark<br>
+Dashboard: Python | Streamlit | Pandas | Plotly
+</p>
+</center>
+""", unsafe_allow_html=True)
