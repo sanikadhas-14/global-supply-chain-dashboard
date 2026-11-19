@@ -31,7 +31,7 @@ st.caption("Air Cargo | Freight | Carrier | Route | Time Analytics")
 
 @st.cache_data
 def load_default():
-    return pd.read_csv("/content/dashboard_data/cargo_data.csv")
+    return pd.read_csv("cargo_data.csv")
 
 uploaded = st.sidebar.file_uploader(
     "Upload your own CSV dataset",
